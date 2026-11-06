@@ -131,6 +131,18 @@ label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--sol
   margin-right: 8px; border: 1px solid var(--cam-kenar); }
 
 /* ============================================================
+   5c) KAT YÖNETİMİ (YENİ) — kat ekleme / silme kartı
+   ============================================================ */
+.katEkleSatir { display: flex; gap: 10px; margin-top: 4px; }
+.katEkleSatir input { flex: 1; }
+.katEkleSatir .btn { white-space: nowrap; }
+.katYonetListe .oge { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--cam-kenar); }
+.katYonetListe .oge:last-child { border-bottom: 0; }
+.katYonetListe .katAd { font-weight: 600; }
+.katYonetListe .katSayi { color: var(--soluk); font-size: 12px; margin-left: 8px; }
+
+/* ============================================================
    6) EKRAN GÖRÜNÜMÜ (katlardaki ekranlar)
    ============================================================ */
 #ekran { display: none; position: fixed; inset: 0; top: 57px; background: #000; overflow: hidden; }
@@ -244,6 +256,19 @@ label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--sol
 
   <div class="izgara">
     <div>
+      <!-- YENİ: KAT YÖNETİMİ KARTI -->
+      <div class="kart cam">
+        <h3>Katları Yönet</h3>
+        <div class="alt">Yeni kat ekleyebilir veya var olan katı silebilirsin. Eklediğin kat, aşağıdaki "Gösterilecek katlar" listesinde de görünür.</div>
+        <label class="et">Yeni kat adı</label>
+        <div class="katEkleSatir">
+          <input id="fYeniKat" placeholder="Örn: 4. Kat, Bodrum, Kafeterya"
+            onkeydown="if(event.key==='Enter') katEkle()">
+          <button class="btn" onclick="katEkle()">Kat Ekle</button>
+        </div>
+        <div class="katYonetListe" id="katYonetListe" style="margin-top:12px"></div>
+      </div>
+
       <div class="kart cam">
         <h3>Yeni İçerik</h3>
         <div class="alt">Telefondan da ekleyebilirsin. Seçtiğin katlarda hemen yayınlanır.</div>
@@ -353,10 +378,16 @@ db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
    anlık dinlemesiyle kendiliğinden güncellenir (yenileme gerekmez).
    Koleksiyonlar:  icerik/{id}   → duyuru, reklam, haber, fotoğraflı içerik
                    ayar/acil, ayar/bant, ayar/bantFoto → {deger: ...}
+                   ayar/katlar → {deger: [kat adları]}   (YENİ)
    Fotoğraflar küçültülüp metin (base64) olarak belgenin içinde tutulur;
    böylece ücretsiz plan yeter, ayrı Storage gerekmez.
    ============================================================ */
-const KATLAR = ['Zemin Kat', '1. Kat', '2. Kat', '3. Kat'];
+
+/* YENİ: Katlar artık Firestore'dan (ayar/katlar) gelir. Henüz hiç kat kaydedilmemişse
+   aşağıdaki varsayılan liste kullanılır. KATLAR dizisi "const" kalır, içeriği
+   katlariUygula() ile yerinde değiştirilir (diğer tüm kod eskisi gibi çalışır). */
+const VARSAYILAN_KATLAR = ['Zemin Kat', '1. Kat', '2. Kat', '3. Kat'];
+const KATLAR = [...VARSAYILAN_KATLAR];
 const SLAYT_SURESI = 8000;         // her slayt kaç milisaniye görünsün
 
 const ORNEK_BANT = 'Hoş geldiniz | Wi-Fi şifresi resepsiyondan alınabilir | Çamaşırhane 2. katta hizmetinizde | Acil durumda 112';
@@ -378,10 +409,11 @@ function bantYaz(b) { onbellek.bant = b; return ayarYaz('bant', b); }
 function bantFotoOku() { return onbellek.bantFoto; }         // bandın içinde kayan küçük fotoğraflar
 function bantFotoYaz(l) { onbellek.bantFoto = l; return ayarYaz('bantFoto', l); }
 
-// "ayar" koleksiyonuna tek belge yazar (acil, bant, bantFoto)
+// "ayar" koleksiyonuna tek belge yazar (acil, bant, bantFoto, katlar)
+// YENİ: başarılıysa true, hata olursa false döner (kat işlemleri buna bakar)
 async function ayarYaz(anahtar, deger) {
-  try { await db.collection('ayar').doc(anahtar).set({ deger }); }
-  catch (e) { hataGoster(e); }
+  try { await db.collection('ayar').doc(anahtar).set({ deger }); return true; }
+  catch (e) { hataGoster(e); return false; }
 }
 
 // Firestore'u canlı dinler: veri değişince bellek güncellenir ve ekran yeniden çizilir.
@@ -401,14 +433,16 @@ function dinlemeBaslat() {
     });
 
     db.collection('ayar').onSnapshot(snap => {
-      let acil = null, bant = ORNEK_BANT, bantFoto = [];
+      let acil = null, bant = ORNEK_BANT, bantFoto = [], katlar = null;
       snap.forEach(d => {
         const v = d.data().deger;
         if (d.id === 'acil') acil = v || null;
         if (d.id === 'bant' && typeof v === 'string') bant = v;
         if (d.id === 'bantFoto' && Array.isArray(v)) bantFoto = v;
+        if (d.id === 'katlar' && Array.isArray(v) && v.length) katlar = v;   // YENİ
       });
       onbellek.acil = acil; onbellek.bant = bant; onbellek.bantFoto = bantFoto;
+      katlariUygula(katlar || VARSAYILAN_KATLAR);                            // YENİ
       yenidenCiz();
       if (ilkB) { ilkB = false; bitti(); }
     }, e => {
@@ -467,9 +501,99 @@ function goster(hangisi) {
 /* ============================================================
    YÖNETİCİ PANELİ İŞLEVLERİ
    ============================================================ */
-function katKutulariCiz(hedef, adlar) {
-  document.getElementById(hedef).innerHTML = KATLAR.map(k =>
-    `<label><input type="checkbox" value="${k}" checked> ${k}</label>`).join('');
+
+// YENİ: yazıyı HTML özelliği (value="...") içinde güvenle kullanmak için
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// "Gösterilecek katlar" ve "Acil durum katlar" kutularını çizer.
+// YENİ: Yeniden çizilirken daha önce işaretlenenler korunur; yeni eklenen kat işaretli gelir.
+function katKutulariCiz(hedef) {
+  const el = document.getElementById(hedef);
+  const eskiTum = [...el.querySelectorAll('input')].map(x => x.value);
+  const eskiSecili = new Set([...el.querySelectorAll('input:checked')].map(x => x.value));
+  el.innerHTML = KATLAR.map(k => {
+    const isaretli = !eskiTum.includes(k) || eskiSecili.has(k);
+    return `<label><input type="checkbox" value="${escAttr(k)}" ${isaretli ? 'checked' : ''}> ${esc(k)}</label>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------------
+   KAT EKLE / SİL (YENİ)
+   Katlar Firestore'da ayar/katlar belgesinde tutulur. Kat eklenince
+   "Gösterilecek katlar", "Acil durum", kat önizlemeleri ve canlı ekran
+   kat seçicisi otomatik güncellenir.
+   ------------------------------------------------------------ */
+
+// Katlar listesini bellekte günceller ve ilgili yerleri yeniden çizer.
+function katlariUygula(yeniListe) {
+  if (JSON.stringify(yeniListe) === JSON.stringify(KATLAR)) return;   // değişmediyse bir şey yapma
+  KATLAR.length = 0;
+  yeniListe.forEach(k => KATLAR.push(k));
+  if (!KATLAR.includes(seciliKat)) seciliKat = KATLAR[0];
+  katKutulariCiz('fKatlar');
+  katKutulariCiz('fAcilKatlar');
+  if (document.getElementById('ekran').style.display === 'block') { katSeciciCiz(); ekraniCiz(); }
+  if (document.getElementById('yonetici').style.display === 'block') panelCiz();
+}
+
+async function katEkle() {
+  const girdi = document.getElementById('fYeniKat');
+  const ad = girdi.value.trim();
+  if (!ad) { alert('Kat adını yazmalısın.'); return; }
+  if (ad.length > 30) { alert('Kat adı en fazla 30 karakter olabilir.'); return; }
+  if (KATLAR.some(k => k.toLocaleLowerCase('tr') === ad.toLocaleLowerCase('tr'))) {
+    alert('Bu isimde bir kat zaten var.'); return;
+  }
+  const yeni = [...KATLAR, ad];
+  if (await ayarYaz('katlar', yeni)) {
+    katlariUygula(yeni);
+    girdi.value = '';
+  }
+}
+
+async function katSil(i) {
+  if (KATLAR.length <= 1) { alert('En az bir kat kalmalı, son kat silinemez.'); return; }
+  const ad = KATLAR[i];
+  const etkilenen = veriOku().filter(x => x.katlar.includes(ad));
+  const tekKatli = etkilenen.filter(x => x.katlar.length === 1);   // sadece bu katta yayınlananlar
+  let uyari = '"' + ad + '" katı silinsin mi?';
+  if (tekKatli.length) uyari += '\n\nSadece bu katta yayınlanan ' + tekKatli.length + ' içerik de silinecek.';
+  if (etkilenen.length - tekKatli.length > 0)
+    uyari += '\n\nBaşka katlarla paylaşılan ' + (etkilenen.length - tekKatli.length) + ' içerik diğer katlarda devam edecek.';
+  if (!confirm(uyari)) return;
+  try {
+    // 1) Bu katı içeriklerden çıkar (başka katı kalmayan içerik silinir)
+    if (etkilenen.length) {
+      const batch = db.batch();
+      etkilenen.forEach(x => {
+        const ref = db.collection('icerik').doc(String(x.id));
+        if (x.katlar.length === 1) batch.delete(ref);
+        else batch.update(ref, { katlar: x.katlar.filter(k => k !== ad) });
+      });
+      await batch.commit();
+    }
+    // 2) Acil yayın bu kattaysa katı oradan da çıkar
+    const acil = acilOku();
+    if (acil && acil.katlar.includes(ad)) {
+      const kalan = acil.katlar.filter(k => k !== ad);
+      await acilYaz(kalan.length ? { metin: acil.metin, katlar: kalan } : null);
+    }
+    // 3) Kat listesini güncelle
+    const yeni = KATLAR.filter((_, j) => j !== i);
+    if (await ayarYaz('katlar', yeni)) katlariUygula(yeni);
+  } catch (e) { hataGoster(e); }
+}
+
+// Kat yönetim kartındaki listeyi çizer
+function katYonetCiz() {
+  document.getElementById('katYonetListe').innerHTML = KATLAR.map((k, i) => {
+    const adet = veriOku().filter(x => x.katlar.includes(k)).length;
+    return `<div class="oge"><div><span class="katAd">${esc(k)}</span><span class="katSayi">${adet} içerik</span></div>
+      <button class="btn tehlike kucuk" onclick="katSil(${i})">Sil</button></div>`;
+  }).join('');
 }
 
 async function icerikEkle() {
@@ -513,7 +637,7 @@ async function icerikSil(id) {
 /* ------------------------------------------------------------
    FOTOĞRAF YÜKLEME (yeni)
    Seçilen fotoğraflar küçültülüp sıkıştırılır (yükleme hızlı olsun diye),
-   "Yayına Al" denince seçilen katlara Supabase üzerinden eklenir.
+   "Yayına Al" denince seçilen katlara Firebase (Firestore) üzerinden eklenir.
    ------------------------------------------------------------ */
 let bekleyenFotolar = [];   // henüz yayınlanmamış, önizlemedeki fotoğraflar (dataURL)
 
@@ -658,14 +782,14 @@ function onizlemeCiz() {
       : '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b">İçerik yok</div>';
     return `<div class="tvKutu" style="cursor:pointer" onclick="katAc(${i})">
       <div class="tvEkran">${icerik}</div>
-      <div class="tvBaslik"><b>${kat}</b><span class="tvCanli">CANLI · ${liste.length} içerik</span></div></div>`;
+      <div class="tvBaslik"><b>${esc(kat)}</b><span class="tvCanli">CANLI · ${liste.length} içerik</span></div></div>`;
   }).join('');
 }
 
 function katAc(i) { seciliKat = KATLAR[i]; goster('ekran'); }
 
 function panelCiz() {
-  istatistikCiz(); onizlemeCiz(); listeCiz(); bantFotoCiz();
+  istatistikCiz(); onizlemeCiz(); listeCiz(); bantFotoCiz(); katYonetCiz();   // YENİ: katYonetCiz()
   document.getElementById('fBant').value = bantOku();
 }
 
@@ -676,7 +800,7 @@ let sira = 0, sayac = null, slaytZamani = 0;
 
 function katSeciciCiz() {
   document.getElementById('katSecici').innerHTML = KATLAR.map((k, i) =>
-    `<button class="${k === seciliKat ? 'aktif' : ''}" onclick="katAc(${i})">${k}</button>`).join('');
+    `<button class="${k === seciliKat ? 'aktif' : ''}" onclick="katAc(${i})">${esc(k)}</button>`).join('');
 }
 
 // Seçili katın slaytlarını, bandı ve acil katmanını çiz
@@ -728,7 +852,7 @@ setInterval(() => {
 // Veri değişince (Firestore anlık dinleme) ekranı ve paneli yeniden çiz
 let sonImza = '';
 function yenidenCiz() {
-  const imza = JSON.stringify([veriOku(), acilOku(), bantOku(), bantFotoOku()]);
+  const imza = JSON.stringify([veriOku(), acilOku(), bantOku(), bantFotoOku(), KATLAR]);   // YENİ: KATLAR eklendi
   if (imza === sonImza) return;
   sonImza = imza;
   if (document.getElementById('ekran').style.display === 'block') ekraniCiz();
