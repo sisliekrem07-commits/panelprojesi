@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurora Duyuru Sistemi</title>
+<style>
+/* ============================================================
+   1) TEMA DEĞİŞKENLERİ — renkleri buradan değiştirirsin
+   ============================================================ */
+:root {
+  --arka: #070b16;
+  --cam: rgba(255,255,255,.06);
+  --cam-kenar: rgba(255,255,255,.12);
+  --yazi: #eef2ff;
+  --soluk: #94a3b8;
+  --vurgu: #7c5cff;
+  --vurgu2: #22d3ee;
+  --altin: #f5c451;
+  --tehlike: #ef4444;
+  --basari: #22c55e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, Arial, sans-serif; background: var(--arka);
+  color: var(--yazi); min-height: 100vh; overflow-x: hidden; }
+
+/* Hareketli arka plan: yavaşça kayan renkli ışık küreleri */
+.arkaplan { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+.kure { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .45;
+  animation: yuz 18s ease-in-out infinite alternate; }
+.kure.k1 { width: 520px; height: 520px; background: var(--vurgu); top: -120px; left: -80px; }
+.kure.k2 { width: 460px; height: 460px; background: var(--vurgu2); bottom: -140px; right: -60px; animation-delay: -6s; }
+.kure.k3 { width: 380px; height: 380px; background: #ec4899; top: 40%; left: 45%; animation-delay: -12s; opacity: .25; }
+@keyframes yuz { to { transform: translate(60px, -40px) scale(1.15); } }
+
+/* ============================================================
+   2) ORTAK PARÇALAR
+   ============================================================ */
+.cam { background: var(--cam); border: 1px solid var(--cam-kenar);
+  border-radius: 18px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.btn { border: 0; border-radius: 12px; padding: 12px 20px; font-size: 15px; font-weight: 600;
+  color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--vurgu), var(--vurgu2));
+  transition: transform .15s, box-shadow .2s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(124,92,255,.4); }
+.btn.tehlike { background: linear-gradient(135deg, #ef4444, #f97316); }
+.btn.sade { background: var(--cam); border: 1px solid var(--cam-kenar); }
+.btn.kucuk { padding: 6px 12px; font-size: 13px; }
+input, select, textarea { width: 100%; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--cam-kenar); background: rgba(0,0,0,.35); color: var(--yazi);
+  font-size: 15px; font-family: inherit; outline: none; }
+input:focus, select:focus, textarea:focus { border-color: var(--vurgu); }
+select option { background: #111827; }
+label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--soluk); }
+
+/* ============================================================
+   3) ÜST ÇUBUK
+   ============================================================ */
+#ustCubuk { position: sticky; top: 0; z-index: 40; display: flex; align-items: center;
+  gap: 16px; padding: 12px 22px; background: rgba(7,11,22,.7); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--cam-kenar); }
+.logo { font-weight: 800; font-size: 20px; letter-spacing: 1px;
+  background: linear-gradient(90deg, var(--altin), var(--vurgu2)); -webkit-background-clip: text;
+  background-clip: text; color: transparent; }
+.sekmeler { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.sekme { padding: 9px 16px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; color: var(--soluk); cursor: pointer; font-size: 14px; font-weight: 600; }
+.sekme.aktif { background: var(--cam); border-color: var(--cam-kenar); color: var(--yazi); }
+
+/* ============================================================
+   4) GİRİŞ EKRANI
+   ============================================================ */
+#giris { display: none; max-width: 400px; margin: 90px auto; padding: 32px; }
+#giris h2 { margin-bottom: 4px; }
+#giris p { color: var(--soluk); font-size: 14px; margin-bottom: 8px; }
+#girisHata { color: #fca5a5; min-height: 20px; margin-top: 10px; font-size: 14px; }
+
+/* ============================================================
+   5) YÖNETİCİ PANELİ
+   ============================================================ */
+#yonetici { display: none; max-width: 1200px; margin: 0 auto; padding: 22px; }
+.istatistikler { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px; margin-bottom: 18px; }
+.istat { padding: 18px; }
+.istat .sayi { font-size: 34px; font-weight: 800; }
+.istat .ad { color: var(--soluk); font-size: 13px; margin-top: 2px; }
+.izgara { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 860px) { .izgara { grid-template-columns: 1fr; } }
+.kart { padding: 20px; margin-bottom: 18px; }
+.kart h3 { margin-bottom: 4px; font-size: 17px; }
+.kart .alt { color: var(--soluk); font-size: 13px; margin-bottom: 8px; }
+.katSecim { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.katSecim label { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-radius: 10px; border: 1px solid var(--cam-kenar); cursor: pointer; font-size: 14px; }
+.katSecim input { width: auto; }
+.liste .oge { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 0; border-bottom: 1px solid var(--cam-kenar); }
+.liste .oge:last-child { border-bottom: 0; }
+.rozet { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px;
+  font-weight: 700; letter-spacing: 1px; margin-right: 8px; }
+.r-duyuru { background: rgba(124,92,255,.25); color: #c4b5fd; }
+.r-reklam { background: rgba(245,196,81,.2); color: var(--altin); }
+.r-haber { background: rgba(34,211,238,.2); color: #67e8f9; }
+.r-foto { background: rgba(236,72,153,.22); color: #f9a8d4; }
+
+/* Kat önizleme kutuları */
+.onizlemeler { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.tvKutu { border-radius: 16px; overflow: hidden; border: 1px solid var(--cam-kenar); background: #000; }
+.tvEkran { position: relative; aspect-ratio: 16/9; overflow: hidden; }
+.tvBaslik { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 13px;
+  background: rgba(255,255,255,.05); }
+.tvBaslik b { color: var(--altin); }
+.tvCanli { color: var(--basari); font-size: 11px; font-weight: 700; }
+.tvCanli::before { content: '● '; animation: yan 1.4s infinite; }
+@keyframes yan { 50% { opacity: .2; } }
+
+/* ============================================================
+   5b) FOTOĞRAF YÜKLEME (yeni)
+   ============================================================ */
+.fotoSecAlan { display: block; border: 2px dashed var(--cam-kenar); border-radius: 14px;
+  padding: 22px 14px; text-align: center; color: var(--soluk); cursor: pointer; font-size: 14px;
+  transition: border-color .2s, background .2s; }
+.fotoSecAlan:hover { border-color: var(--vurgu); background: rgba(124,92,255,.08); }
+.fotoSecAlan input { display: none; }
+.fotoBekleyen { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; margin-top: 12px; }
+.fotoBekleyen .fk { position: relative; aspect-ratio: 16/10; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--cam-kenar); background: #000; }
+.fotoBekleyen .fk img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fotoBekleyen .fk button { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+  border: 0; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; font-size: 13px; }
+.kucukResim { width: 54px; height: 34px; object-fit: cover; border-radius: 6px; vertical-align: middle;
+  margin-right: 8px; border: 1px solid var(--cam-kenar); }
+
+/* ============================================================
+   6) EKRAN GÖRÜNÜMÜ (katlardaki ekranlar)
+   ============================================================ */
+#ekran { display: none; position: fixed; inset: 0; top: 57px; background: #000; overflow: hidden; }
+#ekran.tamEkran { top: 0; }
+.slayt { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center;
+  align-items: center; text-align: center; padding: 6%; opacity: 0; visibility: hidden;
+  transform: scale(1.06); transition: opacity 1.1s ease, transform 1.4s ease, visibility 1.1s; }
+.slayt.gorunur { opacity: 1; visibility: visible; transform: scale(1); }
+.slayt .tur { font-size: 1.1em; letter-spacing: .45em; opacity: .85; margin-bottom: 1.2em;
+  padding: .5em 1.4em; border: 1px solid rgba(255,255,255,.4); border-radius: 99px; }
+.slayt h1 { font-size: 4.2em; line-height: 1.1; margin-bottom: .4em; font-weight: 800;
+  text-shadow: 0 6px 40px rgba(0,0,0,.35); }
+.slayt p { font-size: 1.8em; max-width: 22em; opacity: .95; line-height: 1.4; }
+.slayt.gorunur h1 { animation: giris 1.1s .2s both; }
+.slayt.gorunur p { animation: giris 1.1s .5s both; }
+.slayt.gorunur .tur { animation: giris 1s both; }
+@keyframes giris { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+.t-duyuru { background: radial-gradient(circle at 20% 20%, #4f46e5, #1e1b4b 70%); }
+.t-reklam { background: radial-gradient(circle at 80% 20%, #d97706, #7c2d12 70%); }
+.t-haber  { background: radial-gradient(circle at 50% 10%, #0891b2, #083344 70%); }
+.t-foto   { background: #000; }
+.slayt::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(115deg, transparent 0 60px, rgba(255,255,255,.025) 60px 120px); }
+.slayt.t-foto::after { display: none; }
+
+/* Fotoğraf slaytı: bulanık arka plan + ekrana sığan net fotoğraf */
+.slayt.t-foto { padding: 0; }
+.slayt .fotoArka { position: absolute; inset: -30px; background-size: cover; background-position: center;
+  filter: blur(28px) brightness(.55); }
+.slayt .fotoOn { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.slayt .fotoYazi { position: absolute; left: 0; right: 0; bottom: 4.2em; z-index: 5; padding: .8em 2em;
+  background: linear-gradient(0deg, rgba(0,0,0,.7), transparent); text-align: center; }
+.slayt .fotoYazi h1 { font-size: 2.6em; margin: 0 0 .15em; }
+.slayt .fotoYazi p { font-size: 1.4em; margin: 0 auto; }
+.haberBandi img { height: 1.7em; vertical-align: middle; margin: 0 1.2em; border-radius: 6px; }
+
+/* Ekranın alt bilgi şeridi: kat adı, saat, hava */
+.altSerit { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex;
+  align-items: center; justify-content: space-between; padding: .7em 1.6em;
+  background: linear-gradient(0deg, rgba(0,0,0,.75), transparent); font-size: 1.3em; }
+.altSerit .saat { font-size: 2em; font-weight: 700; letter-spacing: 2px; }
+.altSerit .tarih { font-size: .7em; color: #cbd5e1; }
+.ilerleme { position: absolute; left: 0; bottom: 0; height: 4px; z-index: 21;
+  background: linear-gradient(90deg, var(--altin), var(--vurgu2)); width: 0; }
+
+/* Kayan haber bandı */
+.haberBandi { position: absolute; left: 0; right: 0; top: 0; z-index: 20; overflow: hidden;
+  white-space: nowrap; background: rgba(0,0,0,.55); font-size: 1.1em; padding: .55em 0; }
+.haberBandi span { display: inline-block; padding-left: 100%; animation: kay 40s linear infinite; }
+@keyframes kay { to { transform: translateX(-100%); } }
+
+/* Acil durum katmanı: her şeyin üstüne çıkar */
+.acilKatman { position: absolute; inset: 0; z-index: 50; display: none; flex-direction: column;
+  justify-content: center; align-items: center; text-align: center; padding: 6%;
+  background: radial-gradient(circle, #b91c1c, #450a0a 80%); animation: acilYan 1.2s infinite; }
+.acilKatman.acik { display: flex; }
+.acilKatman .ikon { font-size: 5em; }
+.acilKatman h1 { font-size: 3.4em; letter-spacing: .2em; margin: .2em 0; }
+.acilKatman p { font-size: 2.2em; max-width: 18em; }
+@keyframes acilYan { 50% { filter: brightness(1.35); } }
+
+/* Kat seçici (ekran görünümünde) */
+#katSecici { position: fixed; z-index: 60; left: 50%; transform: translateX(-50%); top: 66px;
+  display: flex; gap: 6px; padding: 6px; border-radius: 14px; }
+#katSecici button { padding: 8px 14px; border-radius: 10px; border: 0; cursor: pointer;
+  background: transparent; color: #cbd5e1; font-weight: 600; }
+#katSecici button.aktif { background: var(--vurgu); color: #fff; }
+#ekran.tamEkran ~ #katSecici { display: none; }
+
+/* Sayfanın en altındaki geliştirici imzası */
+#altImza { text-align: center; padding: 28px 16px 36px; font-size: 13px;
+  color: var(--soluk); letter-spacing: .5px; }
+#altImza b { color: var(--altin); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- Hareketli arka plan -->
+<div class="arkaplan"><div class="kure k1"></div><div class="kure k2"></div><div class="kure k3"></div></div>
+
+<!-- ÜST ÇUBUK -->
+<div id="ustCubuk">
+  <div class="logo">AURORA · DUYURU SİSTEMİ</div>
+  <div class="sekmeler">
+    <button class="sekme aktif" id="sYon" onclick="goster('yonetici')">Yönetim</button>
+    <button class="sekme" id="sEkr" onclick="goster('ekran')">Canlı Ekran</button>
+    <button class="sekme" id="sCik" onclick="cikisYap()" style="display:none">Çıkış</button>
+  </div>
+</div>
+
+<!-- GİRİŞ -->
+<div id="giris" class="cam">
+  <h2>Yönetici Girişi</h2>
+  <p>Devam etmek için giriş yapın.</p>
+  <label class="et">Kullanıcı adı</label><input id="gKullanici" autocomplete="username">
+  <label class="et">Şifre</label><input id="gSifre" type="password" autocomplete="current-password"
+    onkeydown="if(event.key==='Enter') girisYap()">
+  <button class="btn" style="width:100%;margin-top:18px" onclick="girisYap()">Giriş Yap</button>
+  <div id="girisHata"></div>
+</div>
+
+<!-- YÖNETİCİ PANELİ -->
+<div id="yonetici">
+  <div class="istatistikler" id="istatistikler"></div>
+
+  <div class="kart cam">
+    <h3>Canlı Kat Önizlemeleri</h3>
+    <div class="alt">Her katın ekranında şu an gösterilen içerik. Bir kutuya tıklarsan o katın tam ekranı açılır.</div>
+    <div class="onizlemeler" id="onizlemeler"></div>
+  </div>
+
+  <div class="izgara">
+    <div>
+      <div class="kart cam">
+        <h3>Yeni İçerik</h3>
+        <div class="alt">Telefondan da ekleyebilirsin. Seçtiğin katlarda hemen yayınlanır.</div>
+        <label class="et">Tür</label>
+        <select id="fTur">
+          <option value="duyuru">Duyuru</option>
+          <option value="reklam">Reklam</option>
+          <option value="haber">Haber</option>
+        </select>
+        <label class="et">Başlık</label><input id="fBaslik" placeholder="Örn: Hafta sonu etkinliği">
+        <label class="et">Metin</label><textarea id="fMetin" rows="3"></textarea>
+        <label class="et">Fotoğraf (isteğe bağlı — birden fazla seçebilirsin)</label>
+        <label class="fotoSecAlan">
+          📷 Fotoğraf seçmek için tıkla
+          <input type="file" id="fFotoDosya" accept="image/*" multiple onchange="fotoSecildi(this)">
+        </label>
+        <div class="fotoBekleyen" id="fotoBekleyen"></div>
+        <div id="fotoDurum" style="color:var(--soluk);font-size:13px;margin-top:8px;min-height:18px"></div>
+        <label class="et">Gösterilecek katlar</label>
+        <div class="katSecim" id="fKatlar"></div>
+        <button class="btn" style="margin-top:16px" onclick="icerikEkle()">Yayına Al</button>
+      </div>
+
+      <div class="kart cam">
+        <h3>Acil Durum Yayını</h3>
+        <div class="alt">Açılınca seçili katların ekranını tamamen kaplar.</div>
+        <label class="et">Acil mesaj</label><input id="fAcil" placeholder="Örn: Tatbikat 15:00'te başlayacak">
+        <label class="et">Hangi katlar</label>
+        <div class="katSecim" id="fAcilKatlar"></div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn tehlike" onclick="acilAc()">Acil Yayını Başlat</button>
+          <button class="btn sade" onclick="acilKapat()">Kapat</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="kart cam">
+        <h3>Haber Bandı</h3>
+        <div class="alt">Ekranların üstünde kayan yazı. Cümleleri | işaretiyle ayır.</div>
+        <textarea id="fBant" rows="3" onchange="bantKaydet()"></textarea>
+        <label class="et">Banda fotoğraf ekle (yazıların yanında kayar)</label>
+        <label class="fotoSecAlan">
+          📷 Banda fotoğraf eklemek için tıkla
+          <input type="file" id="fBantFoto" accept="image/*" multiple onchange="bantFotoSecildi(this)">
+        </label>
+        <div class="fotoBekleyen" id="bantFotoListe"></div>
+        <button class="btn sade kucuk" style="margin-top:10px" onclick="bantKaydet()">Bandı Güncelle</button>
+      </div>
+
+      <div class="kart cam">
+        <h3>Yayındaki İçerikler</h3>
+        <div class="alt">Tüm katlardaki aktif içerikler.</div>
+        <div class="liste" id="liste"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CANLI EKRAN -->
+<div id="ekran">
+  <div class="haberBandi"><span id="bantMetin"></span></div>
+  <div id="slaytlar"></div>
+  <div class="acilKatman" id="acilKatman">
+    <div class="ikon">⚠</div><h1>ACİL DURUM</h1><p id="acilMetin"></p>
+  </div>
+  <div class="altSerit">
+    <div><div id="katAdi"></div><div class="tarih" id="tarih"></div></div>
+    <div class="saat" id="saat"></div>
+  </div>
+  <div class="ilerleme" id="ilerleme"></div>
+</div>
+<div id="katSecici" class="cam" style="display:none"></div>
+
+<!-- Footer: sadece yönetim ve giriş sayfasında görünür -->
+<div id="altImza">Geliştirici: <b>Ekrem Şişli</b></div>
+
+<script>
+/* ============================================================
+   VERİ KATMANI
+   Demo: veriler tarayıcının localStorage alanında tutulur.
+   Supabase'e geçerken SADECE bu bölüm değişecek:
+   veriOku, veriYaz, acilOku, acilYaz, bantOku, bantYaz
+   ============================================================ */
+const KATLAR = ['Zemin Kat', '1. Kat', '2. Kat', '3. Kat'];
+const DEMO_KULLANICI = 'admin';   // DEMO giriş — gerçekte Supabase girişi olacak
+const DEMO_SIFRE = '1234';
+const SLAYT_SURESI = 8000;         // her slayt kaç milisaniye görünsün
+
+const ORNEK = [
+  { id: 1, tur: 'duyuru', baslik: 'Akşam Yemeği 18:00', metin: 'Yemekhane bu akşam 18:00 - 20:30 arasında açıktır.', katlar: KATLAR },
+  { id: 2, tur: 'haber', baslik: 'Yeni Kütüphane Açıldı', metin: '7 gün 24 saat çalışma salonları öğrencilerimizin hizmetinde.', katlar: KATLAR },
+  { id: 3, tur: 'reklam', baslik: 'Kampüs Kafe', metin: 'Bu hafta tüm sıcak içeceklerde öğrencilere %50 indirim.', katlar: ['Zemin Kat', '1. Kat'] },
+  { id: 4, tur: 'duyuru', baslik: 'Sessiz Saatler', metin: 'Gece 23:00 ile sabah 07:00 arası sessizlik kuralı geçerlidir.', katlar: ['2. Kat', '3. Kat'] },
+  { id: 5, tur: 'haber', baslik: 'Spor Salonu Yenilendi', metin: 'Yeni cihazlarla donatılan salon her gün 08:00 - 22:00 açık.', katlar: ['Zemin Kat', '2. Kat', '3. Kat'] }
+];
+const ORNEK_BANT = 'Hoş geldiniz | Wi-Fi şifresi resepsiyondan alınabilir | Çamaşırhane 2. katta hizmetinizde | Acil durumda 112';
+
+function oku(anahtar, varsayilan) {
+  const v = localStorage.getItem(anahtar);
+  return v ? JSON.parse(v) : varsayilan;
+}
+function yaz(anahtar, deger) { localStorage.setItem(anahtar, JSON.stringify(deger)); }
+
+function veriOku() { return oku('a_icerik', ORNEK); }
+function veriYaz(l) { yaz('a_icerik', l); }
+function acilOku() { return oku('a_acil', null); }          // {metin, katlar} ya da null
+function acilYaz(a) { yaz('a_acil', a); }
+function bantOku() { return oku('a_bant', ORNEK_BANT); }
+function bantYaz(b) { yaz('a_bant', b); }
+function bantFotoOku() { return oku('a_bant_foto', []); }   // bandın içinde kayan küçük fotoğraflar
+function bantFotoYaz(l) { yaz('a_bant_foto', l); }
+
+/* ============================================================
+   GİRİŞ / ÇIKIŞ
+   ============================================================ */
+function girisVarMi() { return sessionStorage.getItem('a_giris') === '1'; }
+function girisYap() {
+  const k = document.getElementById('gKullanici').value.trim();
+  const s = document.getElementById('gSifre').value;
+  if (k === DEMO_KULLANICI && s === DEMO_SIFRE) {
+    sessionStorage.setItem('a_giris', '1');
+    document.getElementById('girisHata').textContent = '';
+    goster('yonetici');
+  } else {
+    document.getElementById('girisHata').textContent = 'Kullanıcı adı veya şifre hatalı.';
+  }
+}
+function cikisYap() { sessionStorage.removeItem('a_giris'); goster('yonetici'); }
+
+/* ============================================================
+   SAYFA GEÇİŞİ
+   ============================================================ */
+let seciliKat = KATLAR[0];
+
+function goster(hangisi) {
+  const girisGerek = hangisi === 'yonetici' && !girisVarMi();
+  document.getElementById('giris').style.display = girisGerek ? 'block' : 'none';
+  document.getElementById('yonetici').style.display = (hangisi === 'yonetici' && !girisGerek) ? 'block' : 'none';
+  document.getElementById('ekran').style.display = hangisi === 'ekran' ? 'block' : 'none';
+  document.getElementById('katSecici').style.display =
+    (hangisi === 'ekran' && !document.getElementById('ekran').classList.contains('tamEkran')) ? 'flex' : 'none';
+  document.getElementById('sYon').classList.toggle('aktif', hangisi === 'yonetici');
+  document.getElementById('sEkr').classList.toggle('aktif', hangisi === 'ekran');
+  document.getElementById('sCik').style.display = girisVarMi() ? 'inline-block' : 'none';
+  // Canlı ekranda imza gizlenir (yayın temiz görünsün), diğer sayfalarda görünür
+  document.getElementById('altImza').style.display = hangisi === 'ekran' ? 'none' : 'block';
+  if (hangisi === 'ekran') { katSeciciCiz(); ekraniCiz(); }
+  if (hangisi === 'yonetici' && !girisGerek) panelCiz();
+}
+
+/* ============================================================
+   YÖNETİCİ PANELİ İŞLEVLERİ
+   ============================================================ */
+function katKutulariCiz(hedef, adlar) {
+  document.getElementById(hedef).innerHTML = KATLAR.map(k =>
+    `<label><input type="checkbox" value="${k}" checked> ${k}</label>`).join('');
+}
+
+function icerikEkle() {
+  const baslik = document.getElementById('fBaslik').value.trim();
+  if (!baslik && !bekleyenFotolar.length) { alert('Başlık yazmalısın ya da bir fotoğraf seçmelisin.'); return; }
+  const katlar = [...document.querySelectorAll('#fKatlar input:checked')].map(x => x.value);
+  if (!katlar.length) { alert('En az bir kat seç.'); return; }
+  const tur = document.getElementById('fTur').value;
+  const metin = document.getElementById('fMetin').value;
+  const l = veriOku();
+  const simdi = Date.now();
+  if (bekleyenFotolar.length) {
+    // Her fotoğraf ayrı bir slayt olur; başlık/metin varsa fotoğrafın altında yazı olarak görünür
+    bekleyenFotolar.forEach((src, i) => l.push({ id: simdi + i, tur, baslik, metin, resim: src, katlar }));
+  } else {
+    l.push({ id: simdi, tur, baslik, metin, katlar });
+  }
+  try { veriYaz(l); }
+  catch (e) { alert('Tarayıcı depolama alanı doldu. Eski fotoğrafları silip tekrar dene ya da daha az fotoğraf seç.'); return; }
+  document.getElementById('fBaslik').value = '';
+  document.getElementById('fMetin').value = '';
+  bekleyenFotolar = [];
+  bekleyenCiz();
+  document.getElementById('fotoDurum').textContent = '';
+  panelCiz();
+}
+
+function icerikSil(id) { veriYaz(veriOku().filter(x => x.id !== id)); panelCiz(); }
+
+/* ------------------------------------------------------------
+   FOTOĞRAF YÜKLEME (yeni)
+   Seçilen fotoğraflar küçültülüp sıkıştırılır (localStorage dolmasın diye),
+   "Yayınla" denince TÜM katlara tur:'foto' içeriği olarak eklenir.
+   ------------------------------------------------------------ */
+let bekleyenFotolar = [];   // henüz yayınlanmamış, önizlemedeki fotoğraflar (dataURL)
+
+function fotoKucult(dosya, MAX = 1600, kalite = 0.78) {
+  return new Promise((coz, red) => {
+    const okuyucu = new FileReader();
+    okuyucu.onerror = () => red(new Error('okuma'));
+    okuyucu.onload = () => {
+      const img = new Image();
+      img.onerror = () => red(new Error('resim'));
+      img.onload = () => {
+        const oran = Math.min(1, MAX / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * oran);
+        c.height = Math.round(img.height * oran);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        coz(c.toDataURL('image/jpeg', kalite));
+      };
+      img.src = okuyucu.result;
+    };
+    okuyucu.readAsDataURL(dosya);
+  });
+}
+
+async function fotoSecildi(girdi) {
+  const dosyalar = [...girdi.files].filter(f => f.type.startsWith('image/'));
+  const durum = document.getElementById('fotoDurum');
+  if (!dosyalar.length) return;
+  durum.textContent = 'Fotoğraflar hazırlanıyor...';
+  for (const d of dosyalar) {
+    try { bekleyenFotolar.push(await fotoKucult(d)); }
+    catch (e) { durum.textContent = d.name + ' okunamadı, atlandı.'; }
+  }
+  girdi.value = '';
+  if (bekleyenFotolar.length) durum.textContent = bekleyenFotolar.length + ' fotoğraf eklendi. Katları seçip "Yayına Al"a bas.';
+  bekleyenCiz();
+}
+
+function bekleyenCiz() {
+  document.getElementById('fotoBekleyen').innerHTML = bekleyenFotolar.map((src, i) =>
+    `<div class="fk"><img src="${src}" alt=""><button title="Kaldır" onclick="bekleyenSil(${i})">✕</button></div>`).join('');
+}
+function bekleyenSil(i) {
+  bekleyenFotolar.splice(i, 1);
+  bekleyenCiz();
+  document.getElementById('fotoDurum').textContent =
+    bekleyenFotolar.length ? bekleyenFotolar.length + ' fotoğraf eklendi. Katları seçip "Yayına Al"a bas.' : '';
+}
+
+/* ------------------------------------------------------------
+   HABER BANDI FOTOĞRAFLARI (yeni)
+   Seçilen fotoğraflar küçültülüp bandın içinde yazılarla birlikte kayar.
+   ------------------------------------------------------------ */
+async function bantFotoSecildi(girdi) {
+  const dosyalar = [...girdi.files].filter(f => f.type.startsWith('image/'));
+  if (!dosyalar.length) return;
+  const l = bantFotoOku();
+  for (const d of dosyalar) {
+    try { l.push(await fotoKucult(d, 500, 0.72)); } catch (e) { /* okunamayan dosya atlanır */ }
+  }
+  girdi.value = '';
+  try { bantFotoYaz(l); }
+  catch (e) { alert('Tarayıcı depolama alanı doldu. Eski fotoğrafları silip tekrar dene.'); }
+  panelCiz();
+}
+function bantFotoSil(i) {
+  const l = bantFotoOku(); l.splice(i, 1); bantFotoYaz(l); panelCiz();
+}
+function bantFotoCiz() {
+  document.getElementById('bantFotoListe').innerHTML = bantFotoOku().map((src, i) =>
+    `<div class="fk"><img src="${src}" alt=""><button title="Kaldır" onclick="bantFotoSil(${i})">✕</button></div>`).join('');
+}
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function acilAc() {
+  const metin = document.getElementById('fAcil').value.trim();
+  if (!metin) { alert('Acil mesajı yazmalısın.'); return; }
+  const katlar = [...document.querySelectorAll('#fAcilKatlar input:checked')].map(x => x.value);
+  acilYaz({ metin, katlar });
+  panelCiz();
+}
+function acilKapat() { acilYaz(null); document.getElementById('fAcil').value = ''; panelCiz(); }
+
+function bantKaydet() { bantYaz(document.getElementById('fBant').value); panelCiz(); }
+
+// Üstteki istatistik kartları
+function istatistikCiz() {
+  const l = veriOku();
+  const acil = acilOku();
+  const kartlar = [
+    ['İçerik', l.length],
+    ['Duyuru', l.filter(x => x.tur === 'duyuru').length],
+    ['Reklam', l.filter(x => x.tur === 'reklam').length],
+    ['Haber', l.filter(x => x.tur === 'haber').length],
+    ['Fotoğraf', l.filter(x => x.resim).length],
+    ['Aktif Ekran', KATLAR.length],
+    ['Acil Yayın', acil ? 'AÇIK' : 'Kapalı']
+  ];
+  document.getElementById('istatistikler').innerHTML = kartlar.map(k =>
+    `<div class="istat cam"><div class="sayi">${k[1]}</div><div class="ad">${k[0]}</div></div>`).join('');
+}
+
+function listeCiz() {
+  const l = veriOku();
+  document.getElementById('liste').innerHTML = l.length ? l.map(x =>
+    `<div class="oge"><div><span class="rozet r-${x.tur}">${x.tur === 'foto' ? 'FOTOĞRAF' : x.tur.toUpperCase()}</span>${
+      x.resim ? `<img class="kucukResim" src="${x.resim}" alt="">` : ''}${
+      x.tur === 'foto' ? '' : `<b>${x.baslik}</b>`}
+     <div style="color:var(--soluk);font-size:12px;margin-top:4px">${x.katlar.join(' · ')}</div></div>
+     <button class="btn sade kucuk" onclick="icerikSil(${x.id})">Sil</button></div>`).join('')
+    : '<div style="color:var(--soluk)">Henüz içerik yok.</div>';
+}
+
+// Canlı kat önizlemeleri: küçük TV kutuları
+function onizlemeCiz() {
+  const acil = acilOku();
+  document.getElementById('onizlemeler').innerHTML = KATLAR.map((kat, i) => {
+    const liste = veriOku().filter(x => x.katlar.includes(kat));
+    const acilVar = acil && acil.katlar.includes(kat);
+    const ilk = liste[0];
+    const icerik = acilVar
+      ? `<div class="t-duyuru" style="position:absolute;inset:0;background:radial-gradient(circle,#b91c1c,#450a0a);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px"><div style="font-size:22px">⚠ ACİL</div><div style="font-size:13px;margin-top:6px">${acil.metin}</div></div>`
+      : (ilk && ilk.resim)
+        ? `<div style="position:absolute;inset:0;background:#000"><img src="${ilk.resim}" alt="" style="width:100%;height:100%;object-fit:contain"></div>`
+      : ilk ? `<div class="t-${ilk.tur}" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12px"><div style="font-size:17px;font-weight:800">${ilk.baslik}</div><div style="font-size:11px;opacity:.85;margin-top:4px">${ilk.metin}</div></div>`
+      : '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64748b">İçerik yok</div>';
+    return `<div class="tvKutu" style="cursor:pointer" onclick="katAc(${i})">
+      <div class="tvEkran">${icerik}</div>
+      <div class="tvBaslik"><b>${kat}</b><span class="tvCanli">CANLI · ${liste.length} içerik</span></div></div>`;
+  }).join('');
+}
+
+function katAc(i) { seciliKat = KATLAR[i]; goster('ekran'); }
+
+function panelCiz() {
+  istatistikCiz(); onizlemeCiz(); listeCiz(); bantFotoCiz();
+  document.getElementById('fBant').value = bantOku();
+}
+
+/* ============================================================
+   EKRAN GÖRÜNÜMÜ İŞLEVLERİ
+   ============================================================ */
+let sira = 0, sayac = null, slaytZamani = 0;
+
+function katSeciciCiz() {
+  document.getElementById('katSecici').innerHTML = KATLAR.map((k, i) =>
+    `<button class="${k === seciliKat ? 'aktif' : ''}" onclick="katAc(${i})">${k}</button>`).join('');
+}
+
+// Seçili katın slaytlarını, bandı ve acil katmanını çiz
+function ekraniCiz() {
+  const uygun = veriOku().filter(x => x.katlar.includes(seciliKat));
+  document.getElementById('slaytlar').innerHTML = uygun.map(x =>
+    x.resim
+      ? `<div class="slayt t-foto"><div class="fotoArka" style="background-image:url('${x.resim}')"></div>
+         <img class="fotoOn" src="${x.resim}" alt="">${
+         (x.tur !== 'foto' && (x.baslik || x.metin))
+           ? `<div class="fotoYazi">${x.baslik ? `<h1>${x.baslik}</h1>` : ''}${x.metin ? `<p>${x.metin}</p>` : ''}</div>` : ''}</div>`
+      : `<div class="slayt t-${x.tur}"><div class="tur">${x.tur.toUpperCase()}</div>
+         <h1>${x.baslik}</h1><p>${x.metin}</p></div>`).join('');
+  sira = 0; slaytGoster();
+  const bantParcalar = bantOku().split('|').map(s => s.trim()).filter(Boolean).map(esc)
+    .concat(bantFotoOku().map(f => `<img src="${f}" alt="">`));
+  document.getElementById('bantMetin').innerHTML = bantParcalar.join('&nbsp;&nbsp; ✦ &nbsp;&nbsp;');
+  document.getElementById('katAdi').textContent = seciliKat;
+  acilKontrol();
+}
+
+function acilKontrol() {
+  const a = acilOku();
+  const goster_ = a && a.katlar.includes(seciliKat);
+  document.getElementById('acilKatman').classList.toggle('acik', !!goster_);
+  if (goster_) document.getElementById('acilMetin').textContent = a.metin;
+}
+
+function slaytGoster() {
+  document.querySelectorAll('.slayt').forEach((s, i) => s.classList.toggle('gorunur', i === sira));
+  slaytZamani = Date.now();
+}
+
+function saatiGuncelle() {
+  const simdi = new Date();
+  document.getElementById('saat').textContent = simdi.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('tarih').textContent = simdi.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// Slayt geçişi ve alttaki ilerleme çizgisi
+setInterval(() => {
+  const toplam = document.querySelectorAll('.slayt').length;
+  if (!toplam || document.getElementById('ekran').style.display !== 'block') return;
+  const gecen = Date.now() - slaytZamani;
+  document.getElementById('ilerleme').style.width = Math.min(100, gecen / SLAYT_SURESI * 100) + '%';
+  if (gecen >= SLAYT_SURESI) { sira = (sira + 1) % toplam; slaytGoster(); }
+}, 100);
+
+// Her 3 saniyede veri değişti mi kontrol et (yeni duyuru ya da acil durum)
+let sonImza = '';
+setInterval(() => {
+  const imza = JSON.stringify([veriOku(), acilOku(), bantOku(), bantFotoOku()]);
+  if (imza === sonImza) return;
+  sonImza = imza;
+  if (document.getElementById('ekran').style.display === 'block') ekraniCiz();
+  if (document.getElementById('yonetici').style.display === 'block') panelCiz();
+}, 3000);
+
+setInterval(saatiGuncelle, 1000);
+
+/* ============================================================
+   BAŞLANGIÇ
+   Adres sonuna #kat=1 yazılırsa o katın ekranı çubuksuz, tam ekran açılır.
+   Katlardaki bilgisayarlar için bu adres kullanılır.
+   ============================================================ */
+katKutulariCiz('fKatlar');
+katKutulariCiz('fAcilKatlar');
+saatiGuncelle();
+
+const eslesme = location.hash.match(/kat=(\d+)/);
+if (eslesme && KATLAR[+eslesme[1]]) {
+  seciliKat = KATLAR[+eslesme[1]];
+  document.getElementById('ustCubuk').style.display = 'none';
+  document.getElementById('ekran').classList.add('tamEkran');
+  goster('ekran');
+} else {
+  goster('yonetici');
+}
+</script>
+</body>
+</html>
