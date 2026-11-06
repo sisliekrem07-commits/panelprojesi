@@ -225,7 +225,7 @@ label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--sol
 <div id="giris" class="cam">
   <h2>Yönetici Girişi</h2>
   <p>Devam etmek için giriş yapın.</p>
-  <label class="et">Kullanıcı adı</label><input id="gKullanici" autocomplete="username">
+  <label class="et">E-posta</label><input id="gKullanici" type="email" autocomplete="username">
   <label class="et">Şifre</label><input id="gSifre" type="password" autocomplete="current-password"
     onkeydown="if(event.key==='Enter') girisYap()">
   <button class="btn" style="width:100%;margin-top:18px" onclick="girisYap()">Giriş Yap</button>
@@ -264,7 +264,7 @@ label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--sol
         <div id="fotoDurum" style="color:var(--soluk);font-size:13px;margin-top:8px;min-height:18px"></div>
         <label class="et">Gösterilecek katlar</label>
         <div class="katSecim" id="fKatlar"></div>
-        <button class="btn" style="margin-top:16px" onclick="icerikEkle()">Yayına Al</button>
+        <button class="btn" id="yayinBtn" style="margin-top:16px" onclick="icerikEkle()">Yayına Al</button>
       </div>
 
       <div class="kart cam">
@@ -321,58 +321,127 @@ label.et { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--sol
 <!-- Footer: sadece yönetim ve giriş sayfasında görünür -->
 <div id="altImza">Geliştirici: <b>Ekrem Şişli</b></div>
 
+<!-- Firebase kütüphaneleri (compat sürüm: mevcut onclick'li kodla uyumlu) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 /* ============================================================
-   VERİ KATMANI
-   Demo: veriler tarayıcının localStorage alanında tutulur.
-   Supabase'e geçerken SADECE bu bölüm değişecek:
-   veriOku, veriYaz, acilOku, acilYaz, bantOku, bantYaz
+   FIREBASE AYARLARI — BURAYI KENDİ BİLGİLERİNLE DOLDUR
+   Firebase konsolu → Proje ayarları (dişli simgesi) → Genel →
+   "Uygulamalarınız" altındaki web uygulamasının firebaseConfig bilgisi.
+   (Bu bilgiler gizli değildir; güvenliği Firestore kuralları sağlar.)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: 'AIzaSyD3KMwP4zraBy3YDQflCo5QOUy1gXtGliE',
+  authDomain: 'panel-65d3b.firebaseapp.com',
+  projectId: 'panel-65d3b',
+  storageBucket: 'panel-65d3b.firebasestorage.app',
+  messagingSenderId: '892285222392',
+  appId: '1:892285222392:web:628ffc73af4d91c0b7ea0d'
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+// İnternet kesilirse ekranlar son bildiği içerikle çalışmaya devam eder
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+/* ============================================================
+   VERİ KATMANI (Firebase / Firestore)
+   Sayfanın geri kalanı eskisi gibi veriOku(), acilOku(), bantOku()
+   fonksiyonlarını kullanır. Bunlar bellekten okur; bellek Firestore'un
+   anlık dinlemesiyle kendiliğinden güncellenir (yenileme gerekmez).
+   Koleksiyonlar:  icerik/{id}   → duyuru, reklam, haber, fotoğraflı içerik
+                   ayar/acil, ayar/bant, ayar/bantFoto → {deger: ...}
+   Fotoğraflar küçültülüp metin (base64) olarak belgenin içinde tutulur;
+   böylece ücretsiz plan yeter, ayrı Storage gerekmez.
    ============================================================ */
 const KATLAR = ['Zemin Kat', '1. Kat', '2. Kat', '3. Kat'];
-const DEMO_KULLANICI = 'admin';   // DEMO giriş — gerçekte Supabase girişi olacak
-const DEMO_SIFRE = '1234';
 const SLAYT_SURESI = 8000;         // her slayt kaç milisaniye görünsün
 
-const ORNEK = [
-  { id: 1, tur: 'duyuru', baslik: 'Akşam Yemeği 18:00', metin: 'Yemekhane bu akşam 18:00 - 20:30 arasında açıktır.', katlar: KATLAR },
-  { id: 2, tur: 'haber', baslik: 'Yeni Kütüphane Açıldı', metin: '7 gün 24 saat çalışma salonları öğrencilerimizin hizmetinde.', katlar: KATLAR },
-  { id: 3, tur: 'reklam', baslik: 'Kampüs Kafe', metin: 'Bu hafta tüm sıcak içeceklerde öğrencilere %50 indirim.', katlar: ['Zemin Kat', '1. Kat'] },
-  { id: 4, tur: 'duyuru', baslik: 'Sessiz Saatler', metin: 'Gece 23:00 ile sabah 07:00 arası sessizlik kuralı geçerlidir.', katlar: ['2. Kat', '3. Kat'] },
-  { id: 5, tur: 'haber', baslik: 'Spor Salonu Yenilendi', metin: 'Yeni cihazlarla donatılan salon her gün 08:00 - 22:00 açık.', katlar: ['Zemin Kat', '2. Kat', '3. Kat'] }
-];
 const ORNEK_BANT = 'Hoş geldiniz | Wi-Fi şifresi resepsiyondan alınabilir | Çamaşırhane 2. katta hizmetinizde | Acil durumda 112';
 
-function oku(anahtar, varsayilan) {
-  const v = localStorage.getItem(anahtar);
-  return v ? JSON.parse(v) : varsayilan;
-}
-function yaz(anahtar, deger) { localStorage.setItem(anahtar, JSON.stringify(deger)); }
+// Bellekteki kopya: ekran çizimleri buradan okur
+let onbellek = { icerik: [], acil: null, bant: ORNEK_BANT, bantFoto: [] };
+let oturum = null;          // giriş yapmış yönetici
 
-function veriOku() { return oku('a_icerik', ORNEK); }
-function veriYaz(l) { yaz('a_icerik', l); }
-function acilOku() { return oku('a_acil', null); }          // {metin, katlar} ya da null
-function acilYaz(a) { yaz('a_acil', a); }
-function bantOku() { return oku('a_bant', ORNEK_BANT); }
-function bantYaz(b) { yaz('a_bant', b); }
-function bantFotoOku() { return oku('a_bant_foto', []); }   // bandın içinde kayan küçük fotoğraflar
-function bantFotoYaz(l) { yaz('a_bant_foto', l); }
+function hataGoster(e) {
+  console.error(e);
+  alert('Bir hata oluştu: ' + (e && e.message ? e.message : e));
+}
+
+function veriOku() { return onbellek.icerik; }
+function acilOku() { return onbellek.acil; }                 // {metin, katlar} ya da null
+function acilYaz(a) { onbellek.acil = a; return ayarYaz('acil', a); }
+function bantOku() { return onbellek.bant; }
+function bantYaz(b) { onbellek.bant = b; return ayarYaz('bant', b); }
+function bantFotoOku() { return onbellek.bantFoto; }         // bandın içinde kayan küçük fotoğraflar
+function bantFotoYaz(l) { onbellek.bantFoto = l; return ayarYaz('bantFoto', l); }
+
+// "ayar" koleksiyonuna tek belge yazar (acil, bant, bantFoto)
+async function ayarYaz(anahtar, deger) {
+  try { await db.collection('ayar').doc(anahtar).set({ deger }); }
+  catch (e) { hataGoster(e); }
+}
+
+// Firestore'u canlı dinler: veri değişince bellek güncellenir ve ekran yeniden çizilir.
+// İlk veriler gelince (ya da hata olursa) çözülen bir söz döndürür.
+function dinlemeBaslat() {
+  return new Promise(coz => {
+    let hazir = 0, ilkA = true, ilkB = true;
+    const bitti = () => { if (++hazir === 2) coz(); };
+
+    db.collection('icerik').orderBy('id').onSnapshot(snap => {
+      onbellek.icerik = snap.docs.map(d => d.data());
+      yenidenCiz();
+      if (ilkA) { ilkA = false; bitti(); }
+    }, e => {
+      console.warn('İçerik dinlenemedi:', e);
+      if (ilkA) { ilkA = false; bitti(); }
+    });
+
+    db.collection('ayar').onSnapshot(snap => {
+      let acil = null, bant = ORNEK_BANT, bantFoto = [];
+      snap.forEach(d => {
+        const v = d.data().deger;
+        if (d.id === 'acil') acil = v || null;
+        if (d.id === 'bant' && typeof v === 'string') bant = v;
+        if (d.id === 'bantFoto' && Array.isArray(v)) bantFoto = v;
+      });
+      onbellek.acil = acil; onbellek.bant = bant; onbellek.bantFoto = bantFoto;
+      yenidenCiz();
+      if (ilkB) { ilkB = false; bitti(); }
+    }, e => {
+      console.warn('Ayarlar dinlenemedi:', e);
+      if (ilkB) { ilkB = false; bitti(); }
+    });
+  });
+}
 
 /* ============================================================
    GİRİŞ / ÇIKIŞ
    ============================================================ */
-function girisVarMi() { return sessionStorage.getItem('a_giris') === '1'; }
-function girisYap() {
+function girisVarMi() { return !!oturum; }
+async function girisYap() {
   const k = document.getElementById('gKullanici').value.trim();
   const s = document.getElementById('gSifre').value;
-  if (k === DEMO_KULLANICI && s === DEMO_SIFRE) {
-    sessionStorage.setItem('a_giris', '1');
-    document.getElementById('girisHata').textContent = '';
+  const hata = document.getElementById('girisHata');
+  hata.textContent = 'Giriş yapılıyor...';
+  try {
+    await auth.signInWithEmailAndPassword(k, s);
+    oturum = auth.currentUser;
+    hata.textContent = '';
+    document.getElementById('gSifre').value = '';
     goster('yonetici');
-  } else {
-    document.getElementById('girisHata').textContent = 'Kullanıcı adı veya şifre hatalı.';
+  } catch (e) {
+    hata.textContent = 'E-posta veya şifre hatalı.';
   }
 }
-function cikisYap() { sessionStorage.removeItem('a_giris'); goster('yonetici'); }
+async function cikisYap() {
+  try { await auth.signOut(); } catch (e) {}
+  oturum = null;
+  goster('yonetici');
+}
 
 /* ============================================================
    SAYFA GEÇİŞİ
@@ -403,41 +472,54 @@ function katKutulariCiz(hedef, adlar) {
     `<label><input type="checkbox" value="${k}" checked> ${k}</label>`).join('');
 }
 
-function icerikEkle() {
+async function icerikEkle() {
   const baslik = document.getElementById('fBaslik').value.trim();
   if (!baslik && !bekleyenFotolar.length) { alert('Başlık yazmalısın ya da bir fotoğraf seçmelisin.'); return; }
   const katlar = [...document.querySelectorAll('#fKatlar input:checked')].map(x => x.value);
   if (!katlar.length) { alert('En az bir kat seç.'); return; }
   const tur = document.getElementById('fTur').value;
   const metin = document.getElementById('fMetin').value;
-  const l = veriOku();
-  const simdi = Date.now();
-  if (bekleyenFotolar.length) {
+  const btn = document.getElementById('yayinBtn');
+  const durum = document.getElementById('fotoDurum');
+  btn.disabled = true;
+  try {
+    const simdi = Date.now();
     // Her fotoğraf ayrı bir slayt olur; başlık/metin varsa fotoğrafın altında yazı olarak görünür
-    bekleyenFotolar.forEach((src, i) => l.push({ id: simdi + i, tur, baslik, metin, resim: src, katlar }));
-  } else {
-    l.push({ id: simdi, tur, baslik, metin, katlar });
-  }
-  try { veriYaz(l); }
-  catch (e) { alert('Tarayıcı depolama alanı doldu. Eski fotoğrafları silip tekrar dene ya da daha az fotoğraf seç.'); return; }
-  document.getElementById('fBaslik').value = '';
-  document.getElementById('fMetin').value = '';
-  bekleyenFotolar = [];
-  bekleyenCiz();
-  document.getElementById('fotoDurum').textContent = '';
+    const satirlar = bekleyenFotolar.length
+      ? bekleyenFotolar.map((src, i) => ({ id: simdi + i, tur, baslik, metin, resim: src, katlar }))
+      : [{ id: simdi, tur, baslik, metin, resim: null, katlar }];
+    for (let i = 0; i < satirlar.length; i++) {
+      durum.textContent = 'Yayınlanıyor ' + (i + 1) + '/' + satirlar.length + '...';
+      await db.collection('icerik').doc(String(satirlar[i].id)).set(satirlar[i]);
+    }
+    document.getElementById('fBaslik').value = '';
+    document.getElementById('fMetin').value = '';
+    bekleyenFotolar = [];
+    bekleyenCiz();
+    durum.textContent = 'Yayınlandı ✓';
+  } catch (e) {
+    durum.textContent = '';
+    hataGoster(e);
+  } finally { btn.disabled = false; }
   panelCiz();
 }
 
-function icerikSil(id) { veriYaz(veriOku().filter(x => x.id !== id)); panelCiz(); }
+async function icerikSil(id) {
+  try { await db.collection('icerik').doc(String(id)).delete(); }
+  catch (e) { hataGoster(e); }
+  panelCiz();
+}
 
 /* ------------------------------------------------------------
    FOTOĞRAF YÜKLEME (yeni)
-   Seçilen fotoğraflar küçültülüp sıkıştırılır (localStorage dolmasın diye),
-   "Yayınla" denince TÜM katlara tur:'foto' içeriği olarak eklenir.
+   Seçilen fotoğraflar küçültülüp sıkıştırılır (yükleme hızlı olsun diye),
+   "Yayına Al" denince seçilen katlara Supabase üzerinden eklenir.
    ------------------------------------------------------------ */
 let bekleyenFotolar = [];   // henüz yayınlanmamış, önizlemedeki fotoğraflar (dataURL)
 
-function fotoKucult(dosya, MAX = 1600, kalite = 0.78) {
+// Fotoğrafı küçültür ve sıkıştırır; sonuç "limit" karakterden büyükse boyutu/kaliteyi düşürür
+// (Firestore'da bir belge en fazla 1 MB olabilir)
+function fotoKucult(dosya, MAX = 1280, kalite = 0.72, limit = 700000) {
   return new Promise((coz, red) => {
     const okuyucu = new FileReader();
     okuyucu.onerror = () => red(new Error('okuma'));
@@ -446,11 +528,17 @@ function fotoKucult(dosya, MAX = 1600, kalite = 0.78) {
       img.onerror = () => red(new Error('resim'));
       img.onload = () => {
         const oran = Math.min(1, MAX / Math.max(img.width, img.height));
+        let w = Math.round(img.width * oran), h = Math.round(img.height * oran);
+        let q = kalite, sonuc = '';
         const c = document.createElement('canvas');
-        c.width = Math.round(img.width * oran);
-        c.height = Math.round(img.height * oran);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        coz(c.toDataURL('image/jpeg', kalite));
+        for (let deneme = 0; deneme < 10; deneme++) {
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          sonuc = c.toDataURL('image/jpeg', q);
+          if (sonuc.length <= limit) break;
+          if (q > 0.5) q -= 0.1; else { w = Math.round(w * 0.8); h = Math.round(h * 0.8); }
+        }
+        coz(sonuc);
       };
       img.src = okuyucu.result;
     };
@@ -490,17 +578,25 @@ function bekleyenSil(i) {
 async function bantFotoSecildi(girdi) {
   const dosyalar = [...girdi.files].filter(f => f.type.startsWith('image/'));
   if (!dosyalar.length) return;
-  const l = bantFotoOku();
+  const l = bantFotoOku().slice();
   for (const d of dosyalar) {
-    try { l.push(await fotoKucult(d, 500, 0.72)); } catch (e) { /* okunamayan dosya atlanır */ }
+    try { l.push(await fotoKucult(d, 500, 0.72, 100000)); }
+    catch (e) { console.warn('Bant fotoğrafı atlandı:', e); }
   }
   girdi.value = '';
-  try { bantFotoYaz(l); }
-  catch (e) { alert('Tarayıcı depolama alanı doldu. Eski fotoğrafları silip tekrar dene.'); }
+  // Tüm bant fotoğrafları tek belgede durur (en fazla 1 MB)
+  if (JSON.stringify(l).length > 900000) {
+    alert('Banda çok fazla fotoğraf eklendi. Önce bazılarını sil.');
+    return;
+  }
+  await bantFotoYaz(l);
   panelCiz();
 }
-function bantFotoSil(i) {
-  const l = bantFotoOku(); l.splice(i, 1); bantFotoYaz(l); panelCiz();
+async function bantFotoSil(i) {
+  const l = bantFotoOku().slice();
+  l.splice(i, 1);
+  await bantFotoYaz(l);
+  panelCiz();
 }
 function bantFotoCiz() {
   document.getElementById('bantFotoListe').innerHTML = bantFotoOku().map((src, i) =>
@@ -629,15 +725,15 @@ setInterval(() => {
   if (gecen >= SLAYT_SURESI) { sira = (sira + 1) % toplam; slaytGoster(); }
 }, 100);
 
-// Her 3 saniyede veri değişti mi kontrol et (yeni duyuru ya da acil durum)
+// Veri değişince (Firestore anlık dinleme) ekranı ve paneli yeniden çiz
 let sonImza = '';
-setInterval(() => {
+function yenidenCiz() {
   const imza = JSON.stringify([veriOku(), acilOku(), bantOku(), bantFotoOku()]);
   if (imza === sonImza) return;
   sonImza = imza;
   if (document.getElementById('ekran').style.display === 'block') ekraniCiz();
   if (document.getElementById('yonetici').style.display === 'block') panelCiz();
-}, 3000);
+}
 
 setInterval(saatiGuncelle, 1000);
 
@@ -650,15 +746,25 @@ katKutulariCiz('fKatlar');
 katKutulariCiz('fAcilKatlar');
 saatiGuncelle();
 
-const eslesme = location.hash.match(/kat=(\d+)/);
-if (eslesme && KATLAR[+eslesme[1]]) {
-  seciliKat = KATLAR[+eslesme[1]];
-  document.getElementById('ustCubuk').style.display = 'none';
-  document.getElementById('ekran').classList.add('tamEkran');
-  goster('ekran');
-} else {
-  goster('yonetici');
+async function baslat() {
+  // Önce oturum durumu ve ilk veriler yüklenir, sonra sayfa açılır
+  await new Promise(coz => {
+    const kapat = auth.onAuthStateChanged(u => { oturum = u; kapat(); coz(); });
+  });
+  auth.onAuthStateChanged(u => { oturum = u; });
+  await Promise.race([dinlemeBaslat(), new Promise(coz => setTimeout(coz, 5000))]);
+
+  const eslesme = location.hash.match(/kat=(\d+)/);
+  if (eslesme && KATLAR[+eslesme[1]]) {
+    seciliKat = KATLAR[+eslesme[1]];
+    document.getElementById('ustCubuk').style.display = 'none';
+    document.getElementById('ekran').classList.add('tamEkran');
+    goster('ekran');
+  } else {
+    goster('yonetici');
+  }
 }
+baslat();
 </script>
 </body>
 </html>
